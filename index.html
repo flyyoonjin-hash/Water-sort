@@ -502,45 +502,31 @@ function doUndo(){
   render();
 }
 
-// 현재 병에 남은 색 칩들을 모아서 섞어 재배치 (빈병 유지)
+// 남은 색 칩 모아서 셔플 재배치 (solvable 체크 없이 가볍게)
 function reshuffleBottles(){
+  // 미완성 병의 칩만 수집
   var chips=[];
-  var empties=0;
-  // 완료된 병 제외하고 남은 병만
-  for(var i=0;i<G.b.length;i++){
-    if(doneSet[i]){empties++;continue;}
+  var bottleCount=G.b.length;
+  for(var i=0;i<bottleCount;i++){
+    if(doneSet[i]) continue;
     for(var j=0;j<G.b[i].length;j++) chips.push(G.b[i][j]);
-    if(!G.b[i].length) empties++;
   }
-  // 칩 셔플
-  for(var i=chips.length-1;i>0;i--){
-    var j=Math.floor(Math.random()*(i+1));
-    var t=chips[i];chips[i]=chips[j];chips[j]=t;
-  }
-  // 새 배치 만들기 (각 병에 CAP개씩, 남은 건 빈병)
-  var nb=[];
-  var ci=0;
-  var filledCount=Math.floor(chips.length/CAP);
-  var rem=chips.length%CAP;
-  for(var i=0;i<filledCount;i++){
-    nb.push(chips.slice(ci,ci+CAP));ci+=CAP;
-  }
-  // 나머지 칩이 있으면 한 병에
-  if(rem>0){ nb.push(chips.slice(ci)); }
-  // 빈병 채우기 (총 20병 맞추기)
-  while(nb.length<G.b.length) nb.push([]);
-  // 셔플 후 풀 수 있는지 확인, 최대 30번 시도
-  for(var t=0;t<30;t++){
-    if(!solved(nb)&&solvable(nb)) return nb;
-    // 다시 셔플
+  // 최소 2번 셔플 (solved 상태 탈출 보장)
+  for(var s=0;s<5;s++){
     for(var i=chips.length-1;i>0;i--){
       var j=Math.floor(Math.random()*(i+1));
-      var tmp=chips[i];chips[i]=chips[j];chips[j]=tmp;
+      var t=chips[i];chips[i]=chips[j];chips[j]=t;
     }
-    nb=[];ci=0;
-    for(var i=0;i<filledCount;i++){nb.push(chips.slice(ci,ci+CAP));ci+=CAP;}
-    if(rem>0) nb.push(chips.slice(ci));
-    while(nb.length<G.b.length) nb.push([]);
+  }
+  // 병에 나눠 담기
+  var nb=[];
+  var ci=0;
+  for(var i=0;i<bottleCount;i++){
+    if(doneSet[i]){ nb.push([]); continue; }
+    if(ci>=chips.length){ nb.push([]); continue; }
+    var slot=[];
+    while(slot.length<CAP && ci<chips.length) slot.push(chips[ci++]);
+    nb.push(slot);
   }
   return nb;
 }
