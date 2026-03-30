@@ -13,7 +13,7 @@ body{
   min-height:100vh;
   background:#0b1628;
   display:flex;flex-direction:column;align-items:center;
-  padding:52px 4px 24px;
+  padding:82px 4px 24px;
   color:#fff;
   font-family:-apple-system,sans-serif;
   -webkit-user-select:none;user-select:none;
@@ -420,8 +420,41 @@ function triggerPour(s,d,state){
       }
     }
 
-    if(solved(G.b)) setTimeout(showWin,950);
+    if(solved(G.b)){
+      setTimeout(showWin,950);
+    } else {
+      // 이동 후 막혔는지 가볍게 체크 (유효한 수가 0개면 자동 셔플)
+      setTimeout(function(){
+        if(!busy && !G.won && validMoves(G.b).length===0){
+          autoReshuffle();
+        }
+      }, 300);
+    }
   }, ANIM_MS);
+}
+
+function autoReshuffle(){
+  // 토스트 메시지 표시
+  var toast=document.createElement('div');
+  toast.textContent='🔀 막혔어요! 자동으로 섞는 중...';
+  toast.style.cssText='position:fixed;bottom:120px;left:50%;transform:translateX(-50%);'+
+    'background:rgba(0,0,0,.8);color:#fff;padding:10px 18px;border-radius:20px;'+
+    'font-size:13px;z-index:999;white-space:nowrap;';
+  document.body.appendChild(toast);
+  setTimeout(function(){
+    toast.parentNode&&toast.parentNode.removeChild(toast);
+  }, 2000);
+
+  // 0.8초 후 셔플 실행 (메시지 보여준 다음)
+  setTimeout(function(){
+    var nb=reshuffleBottles();
+    G.hist.push(G.b.map(function(r){return r.slice();}));
+    G.b=nb;
+    G.sel=null;G.hl=null;
+    doneSet={};clearSet={};
+    document.getElementById('al').innerHTML='';
+    render();
+  }, 800);
 }
 
 function doComplete(idx,colorIdx){
@@ -535,18 +568,8 @@ function doHint(){
   if(busy||pend||G.won)return;
   var h=getHint(G.b);
   if(!h){
-    // 힌트 없음 = 막힌 상태 → 현재 색으로 리셔플해서 풀 수 있게
-    var nb=reshuffleBottles();
-    G.hist.push(G.b.map(function(r){return r.slice();})); // undo 가능하게
-    G.b=nb;
-    G.sel=null;G.hl=null;
-    doneSet={};clearSet={};
-    document.getElementById('al').innerHTML='';
-    render();
-    // 리셋 안내 표시
-    var hb=document.getElementById('hb');
-    hb.textContent='🔀 섞음!';
-    setTimeout(function(){hb.textContent='💡 Hint';},1200);
+    // 답 못 찾으면 셔플
+    autoReshuffle();
     return;
   }
   G.hc++;G.hl=h;G.sel=null;
