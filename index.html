@@ -564,22 +564,53 @@ function reshuffleBottles(){
   return nb;
 }
 
+// BFS 실패시 greedy로 최선의 수 하나 선택
+function greedyHint(b){
+  var ms=validMoves(b);
+  if(!ms.length) return null;
+  var best=null, bestScore=-999;
+  for(var i=0;i<ms.length;i++){
+    var mv=ms[i];
+    var nb=doPour(b,mv.s,mv.d);
+    var score=0;
+    var dn=nb[mv.d];
+    // 병 완성
+    if(dn.length===CAP&&dn.every(function(c){return c===dn[0];})) score+=100;
+    // 같은 색 위에 쌓기
+    if(b[mv.d].length>0&&topC(b[mv.s])===topC(b[mv.d])) score+=40;
+    // 소스 병 비우기
+    if(nb[mv.s].length===0) score+=30;
+    // 소스 병 단색 만들기
+    var sn=nb[mv.s];
+    if(sn.length>0&&sn.every(function(c){return c===sn[0];})) score+=20;
+    if(score>bestScore){bestScore=score;best=mv;}
+  }
+  return best;
+}
+
 function doHint(){
   if(busy||pend||G.won)return;
-  var h=getHint(G.b);
-  if(!h){
-    // 답 못 찾으면 셔플
+
+  var ms=validMoves(G.b);
+
+  // 진짜 막힌 경우 (유효한 수 자체가 없음) → 셔플
+  if(ms.length===0){
     autoReshuffle();
     return;
   }
-  G.hc++;G.hl=h;G.sel=null;
-  pend=true;render();
-  var snap=G.b.map(function(r){return r.slice();});
+
+  // BFS로 최적 힌트 탐색, 실패시 greedy로 fallback
+  var h=getHint(G.b)||greedyHint(G.b);
+
+  // 힌트 찾음 → 두 병을 0.8초 반짝임만, 자동 따르기 없음
+  G.hc++;
+  G.hl=h;
+  G.sel=null;
+  render();
   setTimeout(function(){
-    G.hl=null;pend=false;
-    if(!busy)triggerPour(h.s,h.d,snap);
-    else render();
-  },700);
+    G.hl=null;
+    render();
+  }, 800);
 }
 
 function showWin(){
