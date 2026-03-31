@@ -135,7 +135,7 @@ var POUR_ROT=100, XOFF=81, YOFF=14, LIFT=115;
 var PAL=['#FF2222','#FF7700','#FFE000','#88DD00',
          '#00CC44','#00BB88','#00DDDD','#00AAFF',
          '#0044EE','#7700FF','#CC00EE','#FF00AA',
-         '#FF1166','#FF6633','#8B4500','#CCAA00',
+         '#FF1166','#E8732A','#8B4500','#CCAA00',
          '#4499DD','#D4CCFF'];
 
 // ─── Level config ────────────────────────────────────────────
@@ -564,15 +564,17 @@ function reshuffleBottles(){
   return nb;
 }
 
-// BFS 실패시 greedy로 최선의 수 하나 선택
-function greedyHint(b){
+// BFS 실패시 greedy로 최선의 수 하나 선택 (직전 힌트 역방향 제외)
+function greedyHint(b, lastHint){
   var ms=validMoves(b);
   if(!ms.length) return null;
-  var best=null, bestScore=-999;
+  var best=null, bestScore=-9999;
   for(var i=0;i<ms.length;i++){
     var mv=ms[i];
+    // 직전 힌트의 역방향이면 큰 패널티 (루프 방지)
+    var isReverse=lastHint&&mv.s===lastHint.d&&mv.d===lastHint.s;
     var nb=doPour(b,mv.s,mv.d);
-    var score=0;
+    var score=isReverse?-500:0;
     var dn=nb[mv.d];
     // 병 완성
     if(dn.length===CAP&&dn.every(function(c){return c===dn[0];})) score+=100;
@@ -599,11 +601,12 @@ function doHint(){
     return;
   }
 
-  // BFS로 최적 힌트 탐색, 실패시 greedy로 fallback
-  var h=getHint(G.b)||greedyHint(G.b);
+  // BFS로 최적 힌트 탐색, 실패시 greedy로 fallback (직전 힌트 역방향 제외)
+  var h=getHint(G.b)||greedyHint(G.b, G.lastHint);
 
   // 힌트 찾음 → 두 병을 0.8초 반짝임만, 자동 따르기 없음
   G.hc++;
+  G.lastHint=h;  // 마지막 힌트 기억
   G.hl=h;
   G.sel=null;
   render();
@@ -622,7 +625,7 @@ function showWin(){
 }
 
 function startLevel(lv){
-  G={lv:lv,b:genLevel(lv),sel:null,mv:0,hc:0,hist:[],won:false,hl:null,anim:null};
+  G={lv:lv,b:genLevel(lv),sel:null,mv:0,hc:0,hist:[],won:false,hl:null,anim:null,lastHint:null};
   busy=false;pend=false;
   doneSet={};clearSet={};
   document.getElementById('al').innerHTML='';
