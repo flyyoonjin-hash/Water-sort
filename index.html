@@ -213,38 +213,46 @@ function isSolved(b, bigMode, bigIdx, bigColor){
 }
 
 function topC(r){return r.length?r[r.length-1]:null;}
-function topRun(r){
+// topRun counts consecutive same-color chips from top,
+// stopping at any hidden (mystery) layer.
+function topRun(r, mystery){
   if(!r.length)return 0;
   var c=topC(r),n=0;
-  for(var i=r.length-1;i>=0&&r[i]===c;i--)n++;
+  for(var i=r.length-1;i>=0;i--){
+    if(r[i]!==c) break;          // different colour → stop
+    if(mystery&&mystery[i]) break; // hidden layer → stop (player can't see through it)
+    n++;
+  }
   return n;
 }
 function capOf(idx, bigMode, bigIdx){
   return (bigMode&&idx===bigIdx)?BIG_CAP:CAP;
 }
-function canPour(b,s,d,bigMode,bigIdx){
+function canPour(b,s,d,bigMode,bigIdx,mystery){
   var dc=capOf(d,bigMode,bigIdx);
-  return s!==d&&b[s].length>0&&b[d].length<dc&&
-    (b[d].length===0||topC(b[s])===topC(b[d]));
+  if(s===d||b[s].length===0||b[d].length>=dc) return false;
+  return b[d].length===0||topC(b[s])===topC(b[d]);
 }
-function doPour(b,s,d,bigMode,bigIdx){
+function doPour(b,s,d,bigMode,bigIdx,mystery){
   var nb=b.map(function(r){return r.slice();});
   var col=topC(nb[s]);
   var dc=capOf(d,bigMode,bigIdx);
-  var amt=Math.min(topRun(nb[s]),dc-nb[d].length);
+  var mys=mystery?mystery[s]:null;
+  var amt=Math.min(topRun(nb[s],mys),dc-nb[d].length);
   for(var i=0;i<amt;i++){nb[s].pop();nb[d].push(col);}
   return nb;
 }
 function isFullNormal(bt){return bt.length===CAP&&bt.every(function(c){return c===bt[0];});}
 
-function validMoves(b,bigMode,bigIdx){
+function validMoves(b,bigMode,bigIdx,mystery){
   var ms=[];
   for(var s=0;s<b.length;s++){
     if(!b[s].length)continue;
-    var mono=topRun(b[s])===b[s].length;
+    var mys=mystery?mystery[s]:null;
+    var mono=topRun(b[s],mys)===b[s].length;
     var sc=capOf(s,bigMode,bigIdx);
     for(var d=0;d<b.length;d++){
-      if(!canPour(b,s,d,bigMode,bigIdx))continue;
+      if(!canPour(b,s,d,bigMode,bigIdx,mys))continue;
       if(mono&&b[s].length===sc&&b[d].length===0)continue;
       ms.push({s:s,d:d});
     }
@@ -606,7 +614,7 @@ function triggerPour(s,d,state){
     se.parentNode&&se.parentNode.removeChild(se);
     re.parentNode&&re.parentNode.removeChild(re);
 
-    var next=doPour(state,s,d,G.bigMode,BIG_IDX);
+    var next=doPour(state,s,d,G.bigMode,BIG_IDX,G.mystery);
 
     // Calculate which layers moved for mystery reveal
     var movedAmt=next[d].length-state[d].length;
@@ -653,8 +661,8 @@ function triggerPour(s,d,state){
         }
         render();
         // Secondary win check after clearing animation finishes
-        if(!G.won&&isSolved(G.b,G.bigMode,BIG_IDX,G.bigColor)){
-          setTimeout(showWin,100);
+        if(!G.won&&!busy&&isSolved(G.b,G.bigMode,BIG_IDX,G.bigColor)){
+          setTimeout(showWin,200);
         }
       },880);
     }
@@ -663,13 +671,13 @@ function triggerPour(s,d,state){
     if(!isSolved(G.b,G.bigMode,BIG_IDX,G.bigColor)){
       setTimeout(function(){
         // Only check if no clearing animations are running
-        if(!busy&&!G.won&&Object.keys(clearSet).length===0&&validMoves(G.b,G.bigMode,BIG_IDX).length===0){
+        if(!busy&&!G.won&&Object.keys(clearSet).length===0&&validMoves(G.b,G.bigMode,BIG_IDX,G.mystery).length===0){
           autoReshuffle();
         }
       },1200);
     }
 
-    if(isSolved(G.b,G.bigMode,BIG_IDX,G.bigColor)) setTimeout(showWin,950);
+    if(!G.won&&isSolved(G.b,G.bigMode,BIG_IDX,G.bigColor)) setTimeout(showWin,950);
   }, ANIM_MS);
 }
 
@@ -744,7 +752,7 @@ function handleClick(i){
     if(G.b[i].length>0){G.sel=i;render();}
   } else if(G.sel===i){
     G.sel=null;render();
-  } else if(canPour(G.b,G.sel,i,G.bigMode,BIG_IDX)){
+  } else if(canPour(G.b,G.sel,i,G.bigMode,BIG_IDX,G.mystery?G.mystery[G.sel]:null)){
     triggerPour(G.sel,i,G.b);
   } else {
     G.sel=(!doneSet[i]&&G.b[i].length>0)?i:null;
@@ -807,8 +815,8 @@ function doUndo(){
 
 function doHint(){
   if(busy||pend||G.won)return;
-  if(validMoves(G.b,G.bigMode,BIG_IDX).length===0){autoReshuffle();return;}
-  var h=getHint(G.b,G.bigMode,BIG_IDX,G.bigColor)||greedyHint(G.b,G.bigMode,BIG_IDX,G.bigColor,G.lastHint);
+  if(validMoves(G.b,G.bigMode,BIG_IDX,G.mystery).length===0){autoReshuffle();return;}
+  var h=getHint(G.b,G.bigMode,BIG_IDX,G.bigColor)||greedyHint(G.b,G.bigMode,BIG_IDX,G.bigColor,G.lastHint,G.mystery);
   if(!h){autoReshuffle();return;}
   G.hc++;G.lastHint=h;G.hl=h;G.sel=null;
   render();
