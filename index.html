@@ -110,7 +110,7 @@ body{
 <div id="ctrls">
   <button class="btn dis" id="ub" style="background:#6c5ce7" onclick="window._undo()">↩ Undo</button>
   <button class="btn" id="hb" style="background:#00b894" onclick="window._hint()">💡 Hint</button>
-  <button class="btn" style="background:#e17055" onclick="window._new()">🔄 New</button>
+  <button class="btn" id="nb" style="background:#e17055">🔄 New</button>
 </div>
 <div id="hc"></div>
 
@@ -132,7 +132,7 @@ body{
   <div style="font-size:26px;font-weight:900;letter-spacing:3px">CLEARED!</div>
   <div id="mst" style="font-size:22px"></div>
   <div id="min" style="opacity:.4;font-size:13px"></div>
-  <button id="next" onclick="window._next()">Next Level →</button>
+  <button id="next">Next Level →</button>
 </div>
 <style id="kf"></style>
 <script>
@@ -281,22 +281,7 @@ function revealMystery(mystery, btIdx, from, count){
   }
 }
 
-// ─── DFS solvability ─────────────────────────────────────────
-function solvable(init,bigMode,bigIdx,bigColor){
-  var vis={};vis[skey(init)]=1;
-  var stk=[init];var n=0;
-  while(stk.length&&n++<30000){
-    var cur=stk.pop();
-    var ms=validMoves(cur,bigMode,bigIdx);
-    for(var i=0;i<ms.length;i++){
-      var nxt=doPour(cur,ms[i].s,ms[i].d,bigMode,bigIdx);
-      if(isSolved(nxt,bigMode,bigIdx,bigColor))return true;
-      var nk=skey(nxt);
-      if(!vis[nk]){vis[nk]=1;stk.push(nxt);}
-    }
-  }
-  return stk.length>0;
-}
+
 
 function shuffleArr(a){
   for(var i=a.length-1;i>0;i--){
@@ -336,14 +321,14 @@ function genLevel(lv){
   }
 
   // Normal level
-  for(var t=0;t<100;t++){
+  for(var t=0;t<15;t++){
     var chips=[];
     for(var c=0;c<nC;c++)for(var k=0;k<CAP;k++)chips.push(c);
     shuffleArr(chips);
     var b=[];
     for(var i=0;i<nC;i++)b.push(chips.slice(i*CAP,(i+1)*CAP));
     for(var j=0;j<nE;j++)b.push([]);
-    if(!isSolved(b,false,BIG_IDX,0)&&solvable(b,false,BIG_IDX,0))
+    if(!isSolved(b,false,BIG_IDX,0))
       return{b:b,bigMode:false,bigColor:0};
   }
   // fallback
@@ -362,7 +347,7 @@ function genBigLevel(nC, nE){
   var targetColor=Math.floor(Math.random()*nC);
   var removeColor=(targetColor+1)%nC; // remove one other color
 
-  for(var t=0;t<80;t++){
+  for(var t=0;t<15;t++){
     var chips=[];
     for(var c=0;c<nC;c++){
       if(c===removeColor) continue; // skip removed color
@@ -384,7 +369,7 @@ function genBigLevel(nC, nE){
     // Insert empty big bottle at BIG_IDX (shift everything after)
     b.splice(BIG_IDX,0,[]);
 
-    if(!isSolved(b,true,BIG_IDX,targetColor)&&solvable(b,true,BIG_IDX,targetColor))
+    if(!isSolved(b,true,BIG_IDX,targetColor))
       return{b:presetBigBottle(b,BIG_IDX,targetColor),bigMode:true,bigColor:targetColor};
   }
 
@@ -507,14 +492,14 @@ function render(){
       var clearing=!!clearSet[i];
       var done=!!doneSet[i];
       var isBig=G.bigMode&&i===BIG_IDX;
-      var cls='bcell'+(clearing?' clearing':'');
       var mystery=G.mystery[i]||null;
       var svgHtml=makeSVG(i,done?[]:G.b[i],mystery,G.sel===i,
         !!(G.hl&&(G.hl.s===i||G.hl.d===i)),done,isBig,G.bigColor);
 
       var inner='<div style="position:relative">'+svgHtml+'</div>';
-
-      html+='<div class="'+cls+'" data-ci="'+i+'" style="visibility:'+(flying?'hidden':'visible')+'">'+
+      // flying or clearing = invisible (floater in #al shows animation)
+      var hidden=flying||clearing;
+      html+='<div class="bcell" data-ci="'+i+'" style="visibility:'+(hidden?'hidden':'visible')+'">'+
         inner+'</div>';
     }
     html+='</div>';
@@ -634,97 +619,114 @@ function triggerPour(s,d,state){
     G.anim=null;
     busy=false;
 
-    // Mark completed bottles BEFORE render() so render creates .clearing elements
-    var completions=[];
-    if(!G.bigMode){
-      var check=[d,s];
-      for(var ci2=0;ci2<check.length;ci2++){
-        var cidx=check[ci2];
+    // ── 1. Capture completed-bottle positions BEFORE render (both modes) ──
+    var compPos=[];
+    var chk=[d,s];
+    {
+      for(var ci2=0;ci2<chk.length;ci2++){
+        var cidx=chk[ci2];
+        // Skip big bottle slot - it's handled by winPoller directly
+        if(G.bigMode&&cidx===BIG_IDX) continue;
         if(isFullNormal(next[cidx])&&!isFullNormal(state[cidx])&&!doneSet[cidx]&&!clearSet[cidx]){
-          clearSet[cidx]=1;  // set BEFORE render
-          completions.push({idx:cidx,color:next[cidx][0]});
+          var cel=cellMap[cidx];
+          if(cel){
+            var gRR=document.getElementById('grid').getBoundingClientRect();
+            var eRR=cel.getBoundingClientRect();
+            compPos.push({idx:cidx,color:next[cidx][0],
+              left:eRR.left-gRR.left, top:eRR.top-gRR.top});
+            clearSet[cidx]=1; // hide slot in next render
+          }
         }
       }
     }
 
-    render();  // elements with clearSet have .clearing class → CSS animation starts
+    // ── 2. Render updated state ──
+    render();
 
-    // Trigger sparkles for each completion
-    for(var ki=0;ki<completions.length;ki++){
-      doComplete(completions[ki].idx, completions[ki].color);
-    }
-    // ONE shared cleanup for ALL completions → only one render() after animation
-    if(completions.length>0){
-      setTimeout(function(){
-        for(var ci3=0;ci3<completions.length;ci3++){
-          var cidx2=completions[ci3].idx;
-          delete clearSet[cidx2];
-          doneSet[cidx2]=1;
-        }
-        render();
-        // Secondary win check after clearing animation finishes
-        if(!G.won&&!busy&&isSolved(G.b,G.bigMode,BIG_IDX,G.bigColor)){
-          setTimeout(showWin,200);
-        }
-      },880);
+    // ── 3. Fly-up animation: force reflow so Safari starts animation ──
+    for(var ki=0;ki<compPos.length;ki++){
+      (function(pos){
+        var al=document.getElementById('al');
+        var col=PAL[pos.color]||'#fff';
+        // Inject a unique keyframe name to force Safari to recognize new animation
+        var animName='clrB'+pos.idx+Date.now();
+        var kfStyle=document.createElement('style');
+        kfStyle.textContent='@keyframes '+animName+'{'+
+          '0%{opacity:1;-webkit-transform:translateY(0) scale(1);transform:translateY(0) scale(1)}'+
+          '15%{opacity:1;-webkit-transform:translateY(-12px) scale(1.08);transform:translateY(-12px) scale(1.08)}'+
+          '100%{opacity:0;-webkit-transform:translateY(-380px) scale(.9);transform:translateY(-380px) scale(.9)}'+
+        '}';
+        document.head.appendChild(kfStyle);
+        setTimeout(function(){kfStyle.parentNode&&kfStyle.parentNode.removeChild(kfStyle);},1200);
+
+        var floater=document.createElement('div');
+        floater.style.cssText='position:absolute;left:'+pos.left+'px;top:'+pos.top+'px;'+
+          'pointer-events:none;z-index:60;'+
+          '-webkit-animation:'+animName+' 900ms cubic-bezier(.25,.8,.35,1) forwards;'+
+          'animation:'+animName+' 900ms cubic-bezier(.25,.8,.35,1) forwards;';
+        floater.innerHTML=makeSVG('fly'+pos.idx,next[pos.idx].slice(),null,false,false,false,false,0);
+        al.appendChild(floater);
+        setTimeout(function(){floater.parentNode&&floater.parentNode.removeChild(floater);},950);
+
+        // Sparkles
+        var cx=pos.left+BW/2, cy=pos.top+BH/2;
+        var sc=document.createElement('div');
+        sc.style.cssText='position:absolute;left:'+cx+'px;top:'+cy+'px;pointer-events:none;z-index:120';
+        [{dx:-22,dy:-14,sz:13,dl:0},{dx:16,dy:-22,sz:11,dl:70},
+         {dx:-8,dy:-32,sz:16,dl:35},{dx:26,dy:-6,sz:10,dl:110},
+         {dx:2,dy:-18,sz:18,dl:15},{dx:-28,dy:-28,sz:12,dl:55}
+        ].forEach(function(cfg){
+          var sp=document.createElement('span');
+          sp.className='sp'; sp.textContent='✨';
+          sp.style.cssText='left:'+(cfg.dx-8)+'px;top:'+(cfg.dy-8)+'px;font-size:'+cfg.sz+'px;'+
+            '-webkit-animation:spk .65s ease-out '+cfg.dl+'ms both;animation:spk .65s ease-out '+cfg.dl+'ms both;';
+          sc.appendChild(sp);
+        });
+        [0,60,120,180,240,300].forEach(function(deg,di){
+          var dot=document.createElement('span'); dot.className='sp';
+          dot.style.cssText='left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:'+col+';'+
+            '-webkit-transform:rotate('+deg+'deg) translateY(-28px);transform:rotate('+deg+'deg) translateY(-28px);'+
+            '-webkit-transform-origin:4px 4px;transform-origin:4px 4px;'+
+            '-webkit-animation:spk .5s ease-out '+(di*25)+'ms both;animation:spk .5s ease-out '+(di*25)+'ms both;';
+          sc.appendChild(dot);
+        });
+        al.appendChild(sc);
+        setTimeout(function(){sc.parentNode&&sc.parentNode.removeChild(sc);},900);
+
+        // Mark done after animation
+        setTimeout(function(){
+          delete clearSet[pos.idx];
+          doneSet[pos.idx]=1;
+          render();
+        },920);
+      })(compPos[ki]);
     }
 
-    // Auto-reshuffle if stuck (wait longer to avoid interfering with clearing animation)
+    // ── 4. Check stuck (auto-reshuffle) ──
     if(!isSolved(G.b,G.bigMode,BIG_IDX,G.bigColor)){
       setTimeout(function(){
-        // Only check if no clearing animations are running
-        if(!busy&&!G.won&&Object.keys(clearSet).length===0&&validMoves(G.b,G.bigMode,BIG_IDX,G.mystery).length===0){
+        if(!busy&&!G.won&&Object.keys(clearSet).length===0&&
+           validMoves(G.b,G.bigMode,BIG_IDX,G.mystery).length===0){
           autoReshuffle();
         }
       },1200);
     }
-
-    if(!G.won&&isSolved(G.b,G.bigMode,BIG_IDX,G.bigColor)) setTimeout(showWin,950);
+    // Win is detected by the polling interval (see winPoller below)
   }, ANIM_MS);
 }
 
-// ─── Complete animation ───────────────────────────────────────
-// clearSet[idx] is already set before render() → .clearing CSS class
-// is on the element from the moment it's created → animation runs reliably
-function doComplete(idx,colorIdx){
-  var el=cellMap[idx];
-  var col=PAL[colorIdx]||'#fff';
 
-  // Sparkles
-  if(el){
-    var al=document.getElementById('al');
-    var gR=document.getElementById('grid').getBoundingClientRect();
-    var eR=el.getBoundingClientRect();
-    var cx=eR.left-gR.left+BW/2;
-    var cy=eR.top-gR.top+BH/2;
-    var sc=document.createElement('div');
-    sc.style.cssText='position:absolute;left:'+cx+'px;top:'+cy+'px;pointer-events:none;z-index:120';
-    var sparkDefs=[{dx:-22,dy:-14,sz:13,dl:0},{dx:16,dy:-22,sz:11,dl:70},
-      {dx:-8,dy:-32,sz:16,dl:35},{dx:26,dy:-6,sz:10,dl:110},
-      {dx:2,dy:-18,sz:18,dl:15},{dx:-28,dy:-28,sz:12,dl:55}];
-    for(var i=0;i<sparkDefs.length;i++){
-      var cfg=sparkDefs[i];
-      var sp=document.createElement('span');
-      sp.className='sp';sp.textContent='✨';
-      sp.style.cssText='left:'+(cfg.dx-8)+'px;top:'+(cfg.dy-8)+'px;font-size:'+cfg.sz+'px;'+
-        '-webkit-animation:spk .65s ease-out '+cfg.dl+'ms both;animation:spk .65s ease-out '+cfg.dl+'ms both;';
-      sc.appendChild(sp);
-    }
-    var degs=[0,60,120,180,240,300];
-    for(var di=0;di<degs.length;di++){
-      var dot=document.createElement('span');dot.className='sp';
-      dot.style.cssText='left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:'+col+';'+
-        '-webkit-transform:rotate('+degs[di]+'deg) translateY(-28px);transform:rotate('+degs[di]+'deg) translateY(-28px);'+
-        '-webkit-transform-origin:4px 4px;transform-origin:4px 4px;'+
-        '-webkit-animation:spk .5s ease-out '+(di*25)+'ms both;animation:spk .5s ease-out '+(di*25)+'ms both;';
-      sc.appendChild(dot);
-    }
-    al.appendChild(sc);
-    setTimeout(function(){sc.parentNode&&sc.parentNode.removeChild(sc);},900);
+
+// ─── Win poller — checks every 400ms, bulletproof for both modes ─
+var winPoller=setInterval(function(){
+  if(!G.b||!G.b.length)return;
+  if(G.won||busy)return;
+  if(Object.keys(clearSet).length>0)return; // wait for animations
+  if(isSolved(G.b,G.bigMode,BIG_IDX,G.bigColor)){
+    G.won=true;
+    showWin();
   }
-
-  // cleanup is handled by the shared batch setTimeout in triggerPour
-}
+},400);
 
 // ─── Girl celebration ─────────────────────────────────────────
 function showGirl(){
@@ -735,9 +737,18 @@ function showGirl(){
 
 // ─── Win / modal ─────────────────────────────────────────────
 function showWin(){
-  G.won=true;
+  // G.won already set before showWin is called
   showGirl();
+  var nextLv=G.lv+1;
+  // Auto-advance after 2.5 seconds — no button click needed
   setTimeout(function(){
+    if(G.won){ // still in won state (not already advanced)
+      startLevel(nextLv);
+    }
+  }, 2500);
+  // Also show modal (tappable to skip wait)
+  setTimeout(function(){
+    if(!G.won)return;
     var s=G.hc===0?3:G.hc<=3?2:1;
     document.getElementById('mst').textContent='⭐'.repeat(s)+'☆'.repeat(3-s);
     document.getElementById('min').textContent=G.mv+' moves · '+G.hc+' hint'+(G.hc!==1?'s':'');
@@ -826,31 +837,20 @@ function doHint(){
 }
 
 function startLevel(lv){
-  // Close modal & girl immediately
+  // Reset everything synchronously - no async, no state confusion
+  busy=false; pend=false;
+  doneSet={}; clearSet={};
+
   document.getElementById('modal').classList.remove('on');
   document.getElementById('girl-overlay').classList.remove('on');
   document.getElementById('al').innerHTML='';
-  busy=false;pend=false;
-  doneSet={};clearSet={};
 
-  // Show loading state right away so user sees feedback
-  G={lv:lv,b:[],bigMode:false,bigColor:0,mystery:[],
+  var res=genLevel(lv);
+  G={lv:lv,b:res.b,bigMode:res.bigMode,bigColor:res.bigColor,
+    mystery:genMystery(res.b),
     sel:null,mv:0,hc:0,hist:[],won:false,hl:null,lastHint:null,anim:null};
-  document.getElementById('lv').textContent='Lv.'+lv;
-  document.getElementById('st').textContent='⭐⭐⭐';
-  document.getElementById('mv').textContent='0 moves';
-  document.getElementById('rows').innerHTML='<div style="color:rgba(255,255,255,.4);font-size:14px;margin:40px auto;text-align:center">⏳ 로딩 중...</div>';
 
-  // Generate level async so UI doesn't freeze
-  setTimeout(function(){
-    var res=genLevel(lv);
-    G={lv:lv,b:res.b,bigMode:res.bigMode,bigColor:res.bigColor,
-      mystery:genMystery(res.b),
-      sel:null,mv:0,hc:0,hist:[],won:false,hl:null,lastHint:null,anim:null};
-    busy=false;pend=false;
-    doneSet={};clearSet={};
-    render();
-  },30);
+  render();
 }
 
 // ─── Event delegation ────────────────────────────────────────
@@ -864,8 +864,15 @@ document.getElementById('rows').addEventListener('click',function(e){
   }
 });
 
-// ─── Global bindings ─────────────────────────────────────────
-window._next=function(){startLevel(G.lv+1);};
+// ─── Button event listeners (more reliable than onclick in Safari) ─
+document.getElementById('nb').addEventListener('click',function(){startLevel(G.lv);});
+document.getElementById('next').addEventListener('click',function(){
+  if(G.won) startLevel(G.lv+1);
+});
+document.getElementById('ub').addEventListener('click',function(){doUndo();});
+document.getElementById('hb').addEventListener('click',function(){doHint();});
+// Keep global bindings as fallback
+window._next=function(){if(G.won)startLevel(G.lv+1);};
 window._new=function(){startLevel(G.lv);};
 window._undo=function(){doUndo();};
 window._hint=function(){doHint();};
