@@ -187,7 +187,7 @@ var CAP=4, ANIM_MS=1400;
 var BIG_CAP=8; // big bottle capacity
 var POUR_ROT=100, XOFF=81, YOFF=14, LIFT=115;
 var PAL=['#FF2222','#FF7700','#FFE000','#88DD00',
-         '#00CC44','#00D097','#00DDDD','#00AAFF',
+         '#00CC44','#00D097','#FFB3A0','#00AAFF',
          '#0044EE','#7700FF','#CC00EE','#FF00AA',
          '#FF1166','#00E5CC','#8B4500','#CCAA00',
          '#4499DD','#D4CCFF'];
@@ -585,7 +585,9 @@ function triggerPour(s,d,state){
   al.appendChild(fd);
 
   var col=PAL[topC(state[s])]||'#00AAFF';
-  var scx=sx+FDX+BW/2-(left?XOFF:-XOFF);
+  var destIsBig=G.bigMode&&d===BIG_IDX;
+  var destW=destIsBig?Math.round(BW*1.5):BW;
+  var scx=sx+FDX+destW/2-(left?XOFF:-XOFF);
   var sty=sy+FDY-LIFT+Math.floor(BH/2)+YOFF;
   var sh=Math.max(10,NY1-(Math.floor(BH/2)+YOFF-LIFT));
   var sDur=Math.round(ANIM_MS*.42);
