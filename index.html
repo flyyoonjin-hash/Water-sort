@@ -826,16 +826,31 @@ function doHint(){
 }
 
 function startLevel(lv){
-  var res=genLevel(lv);
-  G={lv:lv,b:res.b,bigMode:res.bigMode,bigColor:res.bigColor,
-    mystery:genMystery(res.b),
-    sel:null,mv:0,hc:0,hist:[],won:false,hl:null,lastHint:null,anim:null};
-  busy=false;pend=false;
-  doneSet={};clearSet={};
-  document.getElementById('al').innerHTML='';
+  // Close modal & girl immediately
   document.getElementById('modal').classList.remove('on');
   document.getElementById('girl-overlay').classList.remove('on');
-  render();
+  document.getElementById('al').innerHTML='';
+  busy=false;pend=false;
+  doneSet={};clearSet={};
+
+  // Show loading state right away so user sees feedback
+  G={lv:lv,b:[],bigMode:false,bigColor:0,mystery:[],
+    sel:null,mv:0,hc:0,hist:[],won:false,hl:null,lastHint:null,anim:null};
+  document.getElementById('lv').textContent='Lv.'+lv;
+  document.getElementById('st').textContent='⭐⭐⭐';
+  document.getElementById('mv').textContent='0 moves';
+  document.getElementById('rows').innerHTML='<div style="color:rgba(255,255,255,.4);font-size:14px;margin:40px auto;text-align:center">⏳ 로딩 중...</div>';
+
+  // Generate level async so UI doesn't freeze
+  setTimeout(function(){
+    var res=genLevel(lv);
+    G={lv:lv,b:res.b,bigMode:res.bigMode,bigColor:res.bigColor,
+      mystery:genMystery(res.b),
+      sel:null,mv:0,hc:0,hist:[],won:false,hl:null,lastHint:null,anim:null};
+    busy=false;pend=false;
+    doneSet={};clearSet={};
+    render();
+  },30);
 }
 
 // ─── Event delegation ────────────────────────────────────────
